@@ -1,27 +1,29 @@
 # Podcast playlist automation
 
-The [queen shit playlist](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XMQs) is synced with these four Spotify shows:
+The [queen shit playlist](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XMQs) contains eligible episodes from these four shows:
 
 - [Office Drama](https://open.spotify.com/show/0sJAtVorz8TsYDzzyM04cq)
 - [soju with sarah](https://open.spotify.com/show/2GWSGMFIZ0xiisnboVE2HS)
 - [Half Past Chai](https://open.spotify.com/show/6j2yaoEEkEwM4uctt0tYSe)
 - [Stronger, Together by Holly Brooks](https://open.spotify.com/show/6C4beHQDYcZhTtPLRgp0pr)
 
-Episodes Spotify marks unplayed or in progress are added. Episodes marked finished are removed. [Left In The Attic](https://open.spotify.com/show/30CG2yb1mBN9ahkaZUKT69) is excluded, and its episodes already in the playlist are removed. Other playlist items are left alone. Missing playback status is treated as unknown and is never guessed. The script reads all pages before changing the playlist, avoids duplicates, and batches writes.
+The initial playlist was populated on October 27, 2026. [Left In The Attic](https://open.spotify.com/show/30CG2yb1mBN9ahkaZUKT69) is excluded.
 
-## Running automatically
+## Current status
 
-The scheduled workflow is stored in the existing `jibrilliban73/WTJplaylistsync` repository so it can use that repository's existing `SPOTIFY_REFRESH_TOKEN` secret without copying or exposing the token. The workflow checks out this repository and runs `podcast_sync.py` approximately every 15 minutes; GitHub may delay scheduled runs. The WTJ workflow remains independent.
+**The scheduled sync is not connected to Spotify yet.** This repository has a 15-minute GitHub Actions schedule, but it skips playlist changes until the `SPOTIFY_REFRESH_TOKEN` Actions secret is configured in this repository. A workflow that ran without this secret has not updated the playlist.
 
-Spotify's development-mode apps require the app owner's Spotify account to have Premium. A 403 means Spotify rejected the sync, so an Actions schedule alone does not guarantee the playlist was updated. The developer app also needs the `user-read-playback-position`, `playlist-read-private`, `playlist-modify-private`, and `playlist-modify-public` permissions. Check the workflow's Actions log for the actual result.
+The Spotify developer app also requires the app owner's account to have Premium. Its authorization must include `user-read-playback-position`, `playlist-read-private`, `playlist-modify-private`, and `playlist-modify-public`. A Spotify 403 means the sync has not succeeded; check the Actions log. Scheduled jobs may be delayed.
 
-Spotify refresh tokens can expire after 180 days or rotate. Reauthorization and updating the existing GitHub secret may then be necessary. GitHub can disable scheduled workflows in public repositories after 60 days without repository activity. The schedule depends on the WTJ repository and its secret remaining available.
+Once authorized, the sync adds episodes Spotify marks unplayed or in progress, removes episodes marked finished, and removes episodes from the excluded show. Other playlist items are preserved. Unknown playback status is skipped; the script reads all pages before making changes, avoids duplicates, and batches writes.
+
+Spotify refresh tokens can expire after 180 days or rotate, requiring reauthorization and an updated GitHub secret. GitHub may disable scheduled workflows in a public repository after 60 days without repository activity. Never commit tokens or share them in chat.
 
 ## Preview and tests
 
-Use **Run workflow** in GitHub Actions with `dry_run` enabled to preview the change counts. The normal schedule applies changes. No computer needs to remain running. Never put tokens in source code or share them in chat.
+After authorization, use **Run workflow** in GitHub Actions with `dry_run` enabled to preview changes. The schedule applies them. The computer does not need to stay on.
 
-The local test suite needs only Python 3.10 or later:
+The test suite needs Python 3.10 or later:
 
 ```sh
 python -m unittest -v
