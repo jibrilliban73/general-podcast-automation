@@ -29,20 +29,16 @@ jobs:
       - name: Check sync logic
         run: python -m unittest -v
       - name: Check Spotify authorization
-        id: auth
         env:
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
         shell: bash
         run: |
-          if [[ -n "$SPOTIFY_REFRESH_TOKEN" ]]; then
-            echo 'available=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo '::warning::Spotify authorization is missing. No playlist changes were made.'
+          if [[ -z "$SPOTIFY_REFRESH_TOKEN" ]]; then
+            echo '::error::Spotify authorization is missing. No playlist changes were made.'
             echo 'Spotify authorization is missing. No playlist changes were made.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
       - name: Sync the playlist
-        if: steps.auth.outputs.available == 'true'
         env:
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
