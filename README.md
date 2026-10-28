@@ -7,7 +7,7 @@ The [queen shit playlist](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XM
 - [Half Past Chai](https://open.spotify.com/show/6j2yaoEEkEwM4uctt0tYSe)
 - [Stronger, Together by Holly Brooks](https://open.spotify.com/show/6C4beHQDYcZhTtPLRgp0pr)
 
-The initial playlist was populated on October 27, 2026. [Left In The Attic](https://open.spotify.com/show/30CG2yb1mBN9ahkaZUKT69) is excluded.
+The initial playlist was populated on October 27, 2026. 
 
 ## Current status
 
