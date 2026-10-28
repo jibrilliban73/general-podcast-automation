@@ -1,6 +1,6 @@
 # Podcast playlist automation
 
-The [queen shit playlist](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XMQs) contains eligible episodes from these four shows:
+The [Tech and Life pods](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XMQs) contains eligible episodes from these four shows:
 
 - [Office Drama](https://open.spotify.com/show/0sJAtVorz8TsYDzzyM04cq)
 - [soju with sarah](https://open.spotify.com/show/2GWSGMFIZ0xiisnboVE2HS)
