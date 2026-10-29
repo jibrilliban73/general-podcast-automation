@@ -1,0 +1,56 @@
+name: Podcast Playlist Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview counts without changing the playlist'
+        type: boolean
+        default: true
+  schedule:
+    - cron: '11,26,41,56 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: general-podcast-playlist-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check sync logic and ordering logic
+        run: python -m unittest -v
+      - name: Check Spotify authorization
+        env:
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$SPOTIFY_REFRESH_TOKEN" ]]; then
+            echo '::error::Spotify authorization is missing. No playlist changes were made.'
+            echo 'Spotify authorization is missing. No playlist changes were made.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Sync the playlist
+        env:
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        shell: bash
+        run: |
+          if [[ "$DRY_RUN" == 'true' ]]; then
+            python podcast_sync.py --dry-run
+          else
+            python podcast_sync.py
+          fi
+      - name: Group podcasts alphabetically with newest episodes first
+        if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
+        env:
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+        run: python playlist_sort.py --profile general
