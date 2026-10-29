@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 
 # The same Spotify app and scopes as the existing WTJ playlist sync.
-CLIENT_ID = "658f7327c1c7439c9cc8cec9aa94de4f"
+CLIENT_ID = "863d034412554af6be0f88f51becfe89"
 API_ROOT = "https://api.spotify.com/v1"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 PLAYLIST_ID = "0Hu69WnnxAgPP59X46XMQs"
@@ -206,3 +206,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

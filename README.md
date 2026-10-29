@@ -1,30 +1,43 @@
-# Podcast playlist automation
+# Tech and life pods sync
 
-The [Tech and Life pods](https://open.spotify.com/playlist/0Hu69WnnxAgPP59X46XMQs) contains eligible episodes from these four shows:
+This repository has its own independent GitHub Actions workflow at `.github/workflows/sync.yml`, scheduled every 15 minutes. It uses this repository's own encrypted `SPOTIFY_REFRESH_TOKEN` and the dedicated Spotify client ID `863d034412554af6be0f88f51becfe89`. It does not call another playlist repository.
 
-- [Office Drama](https://open.spotify.com/show/0sJAtVorz8TsYDzzyM04cq)
-- [soju with sarah](https://open.spotify.com/show/2GWSGMFIZ0xiisnboVE2HS)
-- [Half Past Chai](https://open.spotify.com/show/6j2yaoEEkEwM4uctt0tYSe)
-- [Stronger, Together by Holly Brooks](https://open.spotify.com/show/6C4beHQDYcZhTtPLRgp0pr)
+## What the workflow checks
 
-The initial playlist was populated on October 27, 2026. 
+Every run reads the full catalog of every configured show and every playlist page. It adds playable unplayed and in-progress episodes once, repairs managed duplicates, removes finished managed episodes, and preserves unrelated entries. Unknown playback status, incomplete pagination, expired credentials, failed additions, and failed verification make the run fail visibly.
 
-## Current status
+A live sync rereads the saved playlist; a separate second step rescans all catalogs and audits the saved playlist without editing it. Both must pass before the workflow succeeds. Unit tests are code checks and do not establish that the live Spotify connection works.
 
-**The scheduled sync is not connected to Spotify yet.** This repository has a 15-minute GitHub Actions schedule, but it skips playlist changes until the `SPOTIFY_REFRESH_TOKEN` Actions secret is configured in this repository. A workflow that ran without this secret has not updated the playlist.
+## Authorization and running
 
-The Spotify developer app also requires the app owner's account to have Premium. Its authorization must include `user-read-playback-position`, `playlist-read-private`, `playlist-modify-private`, and `playlist-modify-public`. A Spotify 403 means the sync has not succeeded; check the Actions log. Scheduled jobs may be delayed.
+The required `SPOTIFY_REFRESH_TOKEN` must be authorized for client ID `863d034412554af6be0f88f51becfe89`, with `playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-position`. A public client ID alone is insufficient. Store the refresh token only as this repository's encrypted Actions secret, never in source code or chat.
 
-Once authorized, the sync adds episodes Spotify marks unplayed or in progress, removes episodes marked finished, and removes episodes from the excluded show. Other playlist items are preserved. Unknown playback status is skipped; the script reads all pages before making changes, avoids duplicates, and batches writes.
+Open this repository's Actions tab and select **Tech and life pods sync**. Use **Run workflow** with **dry_run** checked for a preview; uncheck it for a live sync. Use **verify_only** for a read-only full audit. Scheduled runs perform a live sync and independent audit.
 
-Spotify refresh tokens can expire after 180 days or rotate, requiring reauthorization and an updated GitHub secret. GitHub may disable scheduled workflows in a public repository after 60 days without repository activity. Never commit tokens or share them in chat.
+## Email on pass or fail
 
-## Preview and tests
+In GitHub notification settings, enable **Actions → Email** and leave **Only notify for failed workflows** unchecked. Each repository produces its own workflow completion notification. The scheduled workflow's actor receives these notifications. Email delivery must be checked in the mailbox; a GitHub success status alone does not prove email arrival.
 
-After authorization, use **Run workflow** in GitHub Actions with `dry_run` enabled to preview changes. The schedule applies them. The computer does not need to stay on.
+GitHub schedules may be delayed. Premium and Spotify authorization must remain valid. Renew expired or revoked authorization when a run reports it.
 
-The test suite needs Python 3.10 or later:
+## Configured playlist and shows
 
-```sh
-python -m unittest -v
+```json
+{
+  "name": "Tech and life pods",
+  "playlist_id": "0Hu69WnnxAgPP59X46XMQs",
+  "shows": {
+    "0sJAtVorz8TsYDzzyM04cq": "Office Drama",
+    "2GWSGMFIZ0xiisnboVE2HS": "soju with sarah",
+    "6j2yaoEEkEwM4uctt0tYSe": "Half Past Chai",
+    "6C4beHQDYcZhTtPLRgp0pr": "Stronger, Together by Holly Brooks"
+  },
+  "excluded_shows": [
+    "30CG2yb1mBN9ahkaZUKT69"
+  ]
+}
 ```
+
+## Local validation
+
+Run `python -m unittest -v`. Tests cover pagination, incomplete reads, duplicate repair, preservation of unrelated entries, missing additions, and idempotent reruns.
