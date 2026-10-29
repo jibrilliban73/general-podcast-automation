@@ -1,43 +1,39 @@
-# Tech and life pods sync
+# Tech & Life Pods — 8 podcast sync
 
-This repository has its own independent GitHub Actions workflow at `.github/workflows/sync.yml`, scheduled every 15 minutes. It uses this repository's own encrypted `SPOTIFY_REFRESH_TOKEN` and the dedicated Spotify client ID `863d034412554af6be0f88f51becfe89`. It does not call another playlist repository.
+This repository runs `Podcast Playlist Sync` automatically using GitHub Actions.
+The workflow is in `.github/workflows/sync.yml` and runs at minute
+11, 26, 41, and 56 of every hour (approximately every 15 minutes;
+GitHub scheduled jobs can run late).
 
-## What the workflow checks
+## How it works
 
-Every run reads the full catalog of every configured show and every playlist page. It adds playable unplayed and in-progress episodes once, repairs managed duplicates, removes finished managed episodes, and preserves unrelated entries. Unknown playback status, incomplete pagination, expired credentials, failed additions, and failed verification make the run fail visibly.
+- Adds unplayed and partially played episodes from all eight configured shows.
+- Removes managed episodes Spotify reports as fully played.
+- Detects and repairs duplicate managed episodes.
+- Leaves unrelated playlist content unchanged.
+- Scans all catalog pages, fails safely when playback state is unknown,
+  and rereads the saved playlist to verify the result.
+- Uses the repository's encrypted `SPOTIFY_REFRESH_TOKEN` secret and
+  the Spotify app Client ID in `podcast_sync.py`. No secret is stored in code.
 
-A live sync rereads the saved playlist; a separate second step rescans all catalogs and audits the saved playlist without editing it. Both must pass before the workflow succeeds. Unit tests are code checks and do not establish that the live Spotify connection works.
+## How to deploy
 
-## Authorization and running
+Upload `podcast_sync.py`, `podcast_config.json`, and `README.md` to the ROOT of
+`jibrilliban73/general-podcast-automation` on the `main` branch, replacing
+existing files. Do not upload the enclosing ZIP as a file.
 
-The required `SPOTIFY_REFRESH_TOKEN` must be authorized for client ID `863d034412554af6be0f88f51becfe89`, with `playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-playback-position`. A public client ID alone is insufficient. Store the refresh token only as this repository's encrypted Actions secret, never in source code or chat.
+Under Actions > Podcast Playlist Sync, choose Run workflow. Check `dry_run`
+for a preview, or UNCHECK it to do the live sync. The scheduled run is live.
 
-Open this repository's Actions tab and select **Tech and life pods sync**. Use **Run workflow** with **dry_run** checked for a preview; uncheck it for a live sync. Use **verify_only** for a read-only full audit. Scheduled runs perform a live sync and independent audit.
+## Configured shows
 
-## Email on pass or fail
+1. Office Drama
+2. soju with sarah
+3. Half Past Chai
+4. Stronger, Together by Holly Brooks
+5. Killer Instinct
+6. Clock In with Emily Durham
+7. Seamossgirlies
+8. The Health Cafe with Vanessa Tiiu
 
-In GitHub notification settings, enable **Actions → Email** and leave **Only notify for failed workflows** unchecked. Each repository produces its own workflow completion notification. The scheduled workflow's actor receives these notifications. Email delivery must be checked in the mailbox; a GitHub success status alone does not prove email arrival.
-
-GitHub schedules may be delayed. Premium and Spotify authorization must remain valid. Renew expired or revoked authorization when a run reports it.
-
-## Configured playlist and shows
-
-```json
-{
-  "name": "Tech and life pods",
-  "playlist_id": "0Hu69WnnxAgPP59X46XMQs",
-  "shows": {
-    "0sJAtVorz8TsYDzzyM04cq": "Office Drama",
-    "2GWSGMFIZ0xiisnboVE2HS": "soju with sarah",
-    "6j2yaoEEkEwM4uctt0tYSe": "Half Past Chai",
-    "6C4beHQDYcZhTtPLRgp0pr": "Stronger, Together by Holly Brooks"
-  },
-  "excluded_shows": [
-    "30CG2yb1mBN9ahkaZUKT69"
-  ]
-}
-```
-
-## Local validation
-
-Run `python -m unittest -v`. Tests cover pagination, incomplete reads, duplicate repair, preservation of unrelated entries, missing additions, and idempotent reruns.
+Existing GitHub Actions workflow remains unchanged.
