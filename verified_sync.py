@@ -201,6 +201,42 @@ def audit(plan, entries):
             "excluded_remaining": sum(after[uri] for uri in plan["excluded"])}
 
 
+def emit_event(event, **fields):
+    """Flush aggregate evidence before a later request can fail."""
+    print(json.dumps({"event": event, **fields}, sort_keys=True), flush=True)
+
+
+def diagnose(client, config, *, attempts=3):
+    """Read-only preview bounded by matching playlist snapshots.
+
+    Snapshot consistency detects concurrent playlist edits. It cannot prove
+    catalog freshness or that Spotify returned every item's full metadata.
+    """
+    class ReadOnlyClient:
+        def request(self, method, *args, **kwargs):
+            if method != "GET":
+                raise SyncError("Diagnostic mode blocked a playlist write.")
+            return client.request(method, *args, **kwargs)
+
+        def pages(self, *args, **kwargs):
+            return client.pages(*args, **kwargs)
+
+    reader = ReadOnlyClient()
+    path = f'/playlists/{config["playlist_id"]}'
+    for attempt in range(1, attempts + 1):
+        start = reader.request("GET", path).get("snapshot_id")
+        if not isinstance(start, str) or not start:
+            raise SyncError("No playlist snapshot; cannot establish a stable diagnostic scan.")
+        result = reconcile(reader, config, dry_run=True, sort_playlist=True)
+        end = reader.request("GET", path).get("snapshot_id")
+        if start == end:
+            result["diagnostic"] = {"read_only": True, "snapshot_stable": True,
+                                    "attempts": attempt}
+            return result
+        emit_event("diagnostic_read_changed", attempt=attempt)
+    raise SyncError("Playlist changed during every diagnostic scan; no playlist writes made.")
+
+
 def reconcile(client, config, *, dry_run=False, verify_only=False, sort_playlist=False):
     if set(config["shows"]) & set(config.get("excluded_shows", [])):
         raise SyncError("Included and excluded shows overlap.")
@@ -222,10 +258,27 @@ def reconcile(client, config, *, dry_run=False, verify_only=False, sort_playlist
               "duplicate_episodes_repaired": len(plan["duplicates"]),
               "dry_run": dry_run, "verify_only": verify_only}
     if not dry_run and not verify_only:
+        emit_event("membership_plan", required=result["required"],
+                   add=result["add"], remove_copies=result["remove_copies"],
+                   duplicate_episodes_repaired=result["duplicate_episodes_repaired"])
+        attempted = {"DELETE": 0, "POST": 0}
+        responses = {"DELETE": 0, "POST": 0}
+        def write(method, body, count):
+            attempted[method] += 1
+            emit_event("membership_write_attempt", method=method,
+                       batch=attempted[method], items=count)
+            client.request(method, path, body=body)
+            responses[method] += 1
+            # A returned response is not proof that playlist membership changed.
+            emit_event("membership_write_response", method=method,
+                       batch=responses[method], items=count)
         for start in range(0, len(plan["remove"]), 100):
-            client.request("DELETE", path, body={"items": [{"uri": uri} for uri in plan["remove"][start:start + 100]]})
+            batch = plan["remove"][start:start + 100]
+            write("DELETE", {"items": [{"uri": uri} for uri in batch]}, len(batch))
         for start in range(0, len(plan["add"]), 100):
-            client.request("POST", path, body={"uris": plan["add"][start:start + 100]})
+            batch = plan["add"][start:start + 100]
+            write("POST", {"uris": batch}, len(batch))
+        result["write_requests"] = {"attempted": attempted, "responses": responses}
         # Independently reread every saved playlist page, even on a no-op run.
         after = list(client.pages(path, additional_types="track,episode"))
     else:
@@ -233,10 +286,14 @@ def reconcile(client, config, *, dry_run=False, verify_only=False, sort_playlist
     result["audit"] = audit(plan, after)
     result["playlist_items"] = len(after)
     result["verified"] = not any(result["audit"].values())
+    actual = counts(after)
     for row, episodes in zip(summary, catalogs.values()):
-        actual = counts(after)
         row["present_once"] = sum(uri in plan["desired"] and actual[uri] == 1 for uri in episodes)
+        row["missing"] = sum(uri in plan["desired"] and actual[uri] == 0 for uri in episodes)
+    result["unidentifiable_playlist_items"] = sum(
+        not isinstance(item_from_entry(entry).get("uri"), str) for entry in after)
     if not dry_run and not result["verified"]:
+        emit_report(result)
         raise SyncError("Playlist verification failed: " + json.dumps(result["audit"], sort_keys=True))
     if sort_playlist:
         sort_catalogs = {sid: list(episodes.values()) for sid, episodes in catalogs.items()}
@@ -257,16 +314,21 @@ def reconcile(client, config, *, dry_run=False, verify_only=False, sort_playlist
 
 def emit_report(result):
     # Aggregate counts only: do not publish per-episode listening history.
-    print(json.dumps(result, indent=2))
-    status = "VERIFIED" if result["verified"] else "PREVIEW: changes needed"
+    print(json.dumps(result, indent=2), flush=True)
+    status = ("VERIFIED" if result["verified"] else
+              "PREVIEW: changes needed" if result["dry_run"] else "FAILED: membership verification")
     lines = [f'## {result["playlist"]}: {status}', "",
              f'Full catalog scan. Required unfinished episodes: {result["required"]}. Playlist items: {result["playlist_items"]}.', "",
-             "| Podcast | Catalog | Unplayed | In progress | Finished | Unavailable unfinished | Unavailable placeholders | Present once |",
-             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+             "| Podcast | Catalog | Unplayed | In progress | Finished | Unavailable unfinished | Unavailable placeholders | Present once | Missing |",
+             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for row in result["shows"]:
-        lines.append(f'| {row["show"]} | {row["catalog"]} | {row["unplayed"]} | {row["in_progress"]} | {row["finished"]} | {row["unavailable_unfinished"]} | {row["unavailable_placeholders"]} | {row["present_once"]} |')
-    lines += ["", f'Added/planned: {result["add"]}; removed/planned copies: {result["remove_copies"]}.',
+        lines.append(f'| {row["show"]} | {row["catalog"]} | {row["unplayed"]} | {row["in_progress"]} | {row["finished"]} | {row["unavailable_unfinished"]} | {row["unavailable_placeholders"]} | {row["present_once"]} | {row["missing"]} |')
+    lines += ["", f'Planned additions: {result["add"]}; planned removal copies: {result["remove_copies"]}.',
               "Audit: " + ", ".join(f"{key}={value}" for key, value in result["audit"].items()), ""]
+    if "diagnostic" in result:
+        lines += ["Read-only diagnostic: matching playlist snapshots before and after the scan; no playlist writes.", ""]
+    if "write_requests" in result:
+        lines += ["Write requests (responses do not prove persistence): " + json.dumps(result["write_requests"], sort_keys=True), ""]
     if "ordered" in result:
         lines += ["Order: " + ("VERIFIED: newest episode first across all podcasts." if result["ordered"] else "Preview: sorting needed."), ""]
     if os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -280,13 +342,18 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
+    mode.add_argument("--diagnostic", action="store_true",
+                      help="Read-only membership/order preview with snapshot consistency checks")
     parser.add_argument("--sort", action="store_true", help="Sort all podcasts by newest release; reuse the full catalog scan")
     args = parser.parse_args()
     try:
         config = json.loads(Path(args.config).read_text(encoding="utf-8"))
         client = Spotify(os.environ.get("SPOTIFY_CLIENT_ID", "").strip(),
                          os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip())
-        emit_report(reconcile(client, config, dry_run=args.dry_run, verify_only=args.verify_only, sort_playlist=args.sort))
+        if args.diagnostic:
+            emit_report(diagnose(client, config))
+        else:
+            emit_report(reconcile(client, config, dry_run=args.dry_run, verify_only=args.verify_only, sort_playlist=args.sort))
         return 0
     except (SyncError, SortError, ValueError, KeyError, TypeError, OSError) as exc:
         # Exceptions from Spotify are sanitized above; never print tokens or raw responses.
